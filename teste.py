@@ -32,6 +32,10 @@ if not cap.isOpened():
 # Variáveis para controlar o estado do agachamento
 squat_stage = "em pé"  # Pode ser "em pé" ou "agachado"
 squat_count = 0
+development_stage = "baixo"  # Pode ser "baixo" ou "alto"
+development_count = 0
+exercise_name = ""
+lista_exercicios = ["Agachamento", "Desenvolvimento", "Elevacao Lateral"]
 
 print("Webcam opened successfully. Press 'q' to quit.")
 
@@ -64,133 +68,317 @@ while cap.isOpened():
             connection_drawing_spec=mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
         )
 
-        try:
-            # Extrai as coordenadas dos marcos
-            landmarks = results.pose_landmarks.landmark
-            
-            # Coordenadas para o agachamento (lado esquerdo do corpo)
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-            ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
-            
-            # Pontos adicionais para análise mais completa
-            nose = [landmarks[mp_pose.PoseLandmark.NOSE.value].x, landmarks[mp_pose.PoseLandmark.NOSE.value].y]
-            
-            # ========== CÁLCULO DOS ÂNGULOS PRINCIPAIS ==========
-            
-            # 1. Ângulo do JOELHO (hip-knee-ankle)
-            # Ideal: ~90° no agachamento, ~170-180° em pé
-            knee_angle = calculate_angle(hip, knee, ankle)
-            
-            # 2. Ângulo do QUADRIL (shoulder-hip-knee)
-            # Ideal: ~80-100° no agachamento (mantém tronco relativamente reto)
-            hip_angle = calculate_angle(shoulder, hip, knee)
-            
-            # 3. Ângulo do TRONCO (nose-hip-knee) 
-            # Verifica se o tronco está muito inclinado para frente
-            trunk_angle = calculate_angle(nose, hip, knee)
-            
-            # 4. Ângulo do TORNOZELO (knee-ankle-ponta do pé)
-            # Para simplificar, verificamos se o joelho não ultrapassa muito o tornozelo
-            # Calculamos a distância horizontal entre joelho e tornozelo
-            knee_ankle_horizontal_distance = abs(knee[0] - ankle[0])
-            
-            # ========== ANÁLISE DA FORMA DO AGACHAMENTO ==========
-            
-            form_feedback = []
-            is_correct_form = True
-            
-            # Verifica se está na posição de agachamento (joelho flexionado)
-            if knee_angle < 120:  # Considera agachamento quando joelho < 120°
-                # Análise 1: Profundidade do agachamento
-                if knee_angle > 100:
-                    form_feedback.append("Agachamento raso - Desça mais!")
-                    is_correct_form = False
-                elif knee_angle < 70:
-                    form_feedback.append("Muito profundo - Cuidado com os joelhos!")
-                    is_correct_form = False
-                else:
-                    form_feedback.append("Profundidade CORRETA!")
-                
-                # Análise 2: Postura do quadril e tronco
-                if hip_angle < 70:
-                    form_feedback.append("Tronco muito inclinado - Mantenha o peito para cima!")
-                    is_correct_form = False
-                elif hip_angle > 120:
-                    form_feedback.append("Fique mais sentado - Empine o quadril para trás!")
-                    is_correct_form = False
-                else:
-                    form_feedback.append("Postura do tronco CORRETA!")
-                
-                # Análise 3: Posição do joelho em relação ao tornozelo
-                if knee_ankle_horizontal_distance > 0.15:  # Joelho muito à frente
-                    form_feedback.append("Joelho muito à frente - Empurre o quadril para trás!")
-                    is_correct_form = False
-                else:
-                    form_feedback.append("Posição do joelho CORRETA!")
-            
-            # ========== CONTADOR DE REPETIÇÕES ==========
-            
-            # Lógica para contar repetições
-            if knee_angle > 160:
-                squat_stage = "em pé"
-            if knee_angle < 90 and squat_stage == "em pé":
-                squat_stage = "agachado"
-                squat_count += 1
-            
-            # ========== INTERFACE VISUAL ==========
-            
-            # Converter coordenadas normalizadas para pixels
-            h, w, _ = frame.shape
-            
-            # Exibir ângulos na tela
-            cv2.putText(frame, f'Joelho: {int(knee_angle)}', 
-                       (int(knee[0]*w), int(knee[1]*h)), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            
-            cv2.putText(frame, f'Quadril: {int(hip_angle)}', 
-                       (int(hip[0]*w), int(hip[1]*h)), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            
-            # Contador de repetições
-            cv2.rectangle(frame, (0, 0), (150, 100), (245, 117, 16), -1)
-            cv2.putText(frame, 'REPETICOES', (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-            cv2.putText(frame, str(squat_count), (10, 80), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
-            
-            # Status da forma
-            status_y = 120
-            status_color = (0, 255, 0) if is_correct_form and knee_angle < 120 else (0, 165, 255)
-            
-            cv2.putText(frame, 'FORMA DO EXERCICIO:', (10, status_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            
-            # Exibir feedback linha por linha
-            for i, feedback in enumerate(form_feedback):
-                color = (0, 255, 0) if "CORRETA" in feedback or "CORRETO" in feedback else (0, 0, 255)
-                cv2.putText(frame, feedback, (10, status_y + 30 + i*25), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            
-            # Indicador geral
-            if is_correct_form and knee_angle < 120:
-                cv2.putText(frame, 'FORMA CORRETA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            elif knee_angle < 120:
-                cv2.putText(frame, 'CORRIJA A FORMA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        if exercise_name == "":
+            cv2.putText(frame, 'Pressione "e" para selecionar um exercicio.', (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            for i, ex in enumerate(lista_exercicios):
+                cv2.putText(frame, f'{i+1}. {ex}', (10, 60 + i*30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
 
-        except Exception as e:
-            print(f"Erro ao processar os marcos: {e}")
+        elif exercise_name == "Agachamento":
+
+            try:
+                # Extrai as coordenadas dos marcos
+                landmarks = results.pose_landmarks.landmark
+                
+                # Coordenadas para o agachamento (lado esquerdo do corpo)
+                shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+                ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+                
+                # Pontos adicionais para análise mais completa
+                nose = [landmarks[mp_pose.PoseLandmark.NOSE.value].x, landmarks[mp_pose.PoseLandmark.NOSE.value].y]
+                
+                # ========== CÁLCULO DOS ÂNGULOS PRINCIPAIS ==========
+                
+                # 1. Ângulo do JOELHO (hip-knee-ankle)
+                # Ideal: ~90° no agachamento, ~170-180° em pé
+                knee_angle = calculate_angle(hip, knee, ankle)
+                
+                # 2. Ângulo do QUADRIL (shoulder-hip-knee)
+                # Ideal: ~80-100° no agachamento (mantém tronco relativamente reto)
+                hip_angle = calculate_angle(shoulder, hip, knee)
+                
+                # 3. Ângulo do TRONCO (nose-hip-knee) 
+                # Verifica se o tronco está muito inclinado para frente
+                trunk_angle = calculate_angle(nose, hip, knee)
+                
+                # 4. Ângulo do TORNOZELO (knee-ankle-ponta do pé)
+                # Para simplificar, verificamos se o joelho não ultrapassa muito o tornozelo
+                # Calculamos a distância horizontal entre joelho e tornozelo
+                knee_ankle_horizontal_distance = abs(knee[0] - ankle[0])
+                
+                # ========== ANÁLISE DA FORMA DO AGACHAMENTO ==========
+                
+                form_feedback = []
+                is_correct_form = True
+                
+                # Verifica se está na posição de agachamento (joelho flexionado)
+                if knee_angle < 120:  # Considera agachamento quando joelho < 120°
+                    # Análise 1: Profundidade do agachamento
+                    if knee_angle > 100:
+                        form_feedback.append("Agachamento raso - Desça mais!")
+                        is_correct_form = False
+                    elif knee_angle < 70:
+                        form_feedback.append("Muito profundo - Cuidado com os joelhos!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Profundidade CORRETA!")
+                    
+                    # Análise 2: Postura do quadril e tronco
+                    if hip_angle < 70:
+                        form_feedback.append("Tronco muito inclinado - Mantenha o peito para cima!")
+                        is_correct_form = False
+                    elif hip_angle > 120:
+                        form_feedback.append("Fique mais sentado - Empine o quadril para tras!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Postura do tronco CORRETA!")
+                    
+                    # Análise 3: Posição do joelho em relação ao tornozelo
+                    if knee_ankle_horizontal_distance > 0.15:  # Joelho muito à frente
+                        form_feedback.append("Joelho muito a frente - Empurre o quadril para tras!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Posicao do joelho CORRETA!")
+                
+                # ========== CONTADOR DE REPETIÇÕES ==========
+                
+                # Lógica para contar repetições
+                if knee_angle > 160:
+                    squat_stage = "em pé"
+                if knee_angle < 90 and squat_stage == "em pé":
+                    squat_stage = "agachado"
+                    squat_count += 1
+                
+                # ========== INTERFACE VISUAL ==========
+                
+                # Converter coordenadas normalizadas para pixels
+                h, w, _ = frame.shape
+                
+                # Exibir ângulos na tela
+                cv2.putText(frame, f'Joelho: {int(knee_angle)}', 
+                        (int(knee[0]*w), int(knee[1]*h)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                
+                cv2.putText(frame, f'Quadril: {int(hip_angle)}', 
+                        (int(hip[0]*w), int(hip[1]*h)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                
+                # Contador de repetições
+                cv2.rectangle(frame, (0, 0), (150, 100), (245, 117, 16), -1)
+                cv2.putText(frame, 'REPETICOES', (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+                cv2.putText(frame, str(squat_count), (10, 80), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+                
+                # Status da forma
+                status_y = 120
+                status_color = (0, 255, 0) if is_correct_form and knee_angle < 120 else (0, 165, 255)
+                
+                cv2.putText(frame, 'FORMA DO EXERCICIO:', (10, status_y), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                # Exibir feedback linha por linha
+                for i, feedback in enumerate(form_feedback):
+                    color = (0, 255, 0) if "CORRETA" in feedback or "CORRETO" in feedback else (0, 0, 255)
+                    cv2.putText(frame, feedback, (10, status_y + 30 + i*25), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                
+                # Indicador geral
+                if is_correct_form and knee_angle < 120:
+                    cv2.putText(frame, 'FORMA CORRETA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                elif knee_angle < 120:
+                    cv2.putText(frame, 'CORRIJA A FORMA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+            except Exception as e:
+                print(f"Erro ao processar os marcos: {e}")
+            
+        elif exercise_name == "Desenvolvimento":
+
+            try:
+                # Extrai as coordenadas dos marcos
+                landmarks = results.pose_landmarks.landmark
+                
+                # Coordenadas para o desenvolvimento com halter (lado esquerdo do corpo)
+                shoulder_L = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                shoulder_R = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
+                elbow_L = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+                elbow_R = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
+                wrist_L = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+                wrist_R = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+
+                # Pontos adicionais para análise mais completa
+                hip_L = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                hip_R = [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y]
+                
+                # ========== CÁLCULO DOS ÂNGULOS PRINCIPAIS ==========
+                
+                # 1. Ângulo do COTOVELO ESQUERDO (shoulder-elbow-wrist)
+                # Ideal: ~90° na posição inicial (braço flexionado), ~170-180° na extensão completa
+                elbow_angle_L = calculate_angle(shoulder_L, elbow_L, wrist_L)
+                
+                # 2. Ângulo do COTOVELO DIREITO (shoulder-elbow-wrist)
+                elbow_angle_R = calculate_angle(shoulder_R, elbow_R, wrist_R)
+                
+                # Média dos dois cotovelos para análise simétrica
+                elbow_angle = (elbow_angle_L + elbow_angle_R) / 2
+                
+                # 3. Ângulo do OMBRO ESQUERDO (hip-shoulder-elbow)
+                # Verifica se o braço está na posição correta (aproximadamente 90° com o tronco na posição inicial)
+                shoulder_angle_L = calculate_angle(hip_L, shoulder_L, elbow_L)
+                
+                # 4. Ângulo do OMBRO DIREITO (hip-shoulder-elbow)
+                shoulder_angle_R = calculate_angle(hip_R, shoulder_R, elbow_R)
+                
+                # Média dos ângulos dos ombros
+                shoulder_angle = (shoulder_angle_L + shoulder_angle_R) / 2
+                
+                # 5. Verificar SIMETRIA entre os braços
+                elbow_symmetry_diff = abs(elbow_angle_L - elbow_angle_R)
+                
+                # 6. Verificar ALINHAMENTO DO TRONCO (deve estar reto)
+                # Calculamos se os ombros estão alinhados horizontalmente
+                shoulder_alignment = abs(shoulder_L[1] - shoulder_R[1])  # Diferença vertical entre ombros
+                
+                # 7. Verificar se os pulsos estão ACIMA dos cotovelos (posição correta)
+                wrist_above_elbow_L = wrist_L[1] < elbow_L[1]  # Coordenada Y menor = mais alto
+                wrist_above_elbow_R = wrist_R[1] < elbow_R[1]
+
+
+                # ========== ANÁLISE DA FORMA DO DESENVOLVIMENTO ==========
+                form_feedback = []
+                is_correct_form = True
+                
+                # Verifica se está executando o movimento (não totalmente estendido)
+                if elbow_angle < 160:  # Considera que está no movimento
+                    
+                    # Análise 1: Profundidade/Posição inicial (cotovelo ~90°)
+                    if elbow_angle > 110:
+                        form_feedback.append("Desca mais os bracos - Cotovelo em 90°!")
+                        is_correct_form = False
+                    elif elbow_angle < 70:
+                        form_feedback.append("Bracos muito baixos - Risco de lesao!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Amplitude do movimento CORRETA!")
+                    
+                    # Análise 2: Simetria entre os braços
+                    if elbow_symmetry_diff > 15:  # Diferença maior que 15° entre braços
+                        form_feedback.append("Bracos ASSIMETRICOS - Iguale os dois lados!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Simetria dos braços CORRETA!")
+                    
+                    # Análise 3: Ângulo dos ombros (braço deve estar aproximadamente perpendicular ao tronco)
+                    if shoulder_angle < 60:
+                        form_feedback.append("Cotovelos muito para tras - Traga para frente!")
+                        is_correct_form = False
+                    elif shoulder_angle > 110:
+                        form_feedback.append("Cotovelos muito para frente - Alinhe com ombros!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Posicao dos ombros CORRETA!")
+                    
+                    # Análise 4: Alinhamento do tronco
+                    if shoulder_alignment > 0.05:  # Ombros desalinhados verticalmente
+                        form_feedback.append("Tronco INCLINADO - Mantenha-se reto!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Postura do tronco CORRETA!")
+                    
+                    # Análise 5: Posição dos pulsos
+                    if not wrist_above_elbow_L or not wrist_above_elbow_R:
+                        form_feedback.append("Pulsos abaixo dos cotovelos - Corrija a pegada!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Posicao dos pulsos CORRETA!")
+                
+                # Verifica extensão completa na posição alta
+                elif elbow_angle >= 160:
+                    if elbow_angle < 170:
+                        form_feedback.append("Estenda completamente os bracos no topo!")
+                        is_correct_form = False
+                    else:
+                        form_feedback.append("Extensao completa CORRETA!")
+
+                
+                # ========== CONTADOR DE REPETIÇÕES ==========
+                # Lógica para contar repetições (completa = sobe e desce)
+                if elbow_angle > 160:  # Braços totalmente estendidos (topo do movimento)
+                    development_stage = "alto"
+                if elbow_angle < 100 and development_stage == "alto":  # Braços flexionados (posição inicial)
+                    development_stage = "baixo"
+                    development_count += 1 
+                    
+
+                # ========== INTERFACE VISUAL ==========
+                
+                # Converter coordenadas normalizadas para pixels
+                h, w, _ = frame.shape
+                
+                # Exibir ângulos na tela para cada cotovelo
+                cv2.putText(frame, f'Cotovelo E: {int(elbow_angle_L)}', 
+                        (int(elbow_L[0]*w), int(elbow_L[1]*h) - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                
+                cv2.putText(frame, f'Cotovelo D: {int(elbow_angle_R)}', 
+                        (int(elbow_R[0]*w), int(elbow_R[1]*h) - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                
+                cv2.putText(frame, f'Ombro: {int(shoulder_angle)}', 
+                        (int(shoulder_L[0]*w), int(shoulder_L[1]*h)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                # Contador de repetições
+                cv2.rectangle(frame, (0, 0), (150, 100), (245, 117, 16), -1)
+                cv2.putText(frame, 'REPETICOES', (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+                cv2.putText(frame, str(development_count), (10, 80), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+                
+                # Status da forma
+                status_y = 120
+                status_color = (0, 255, 0) if is_correct_form and elbow_angle < 160 else (0, 165, 255)
+                
+                cv2.putText(frame, 'FORMA DO EXERCICIO:', (10, status_y), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                # Exibir feedback linha por linha
+                for i, feedback in enumerate(form_feedback):
+                    color = (0, 255, 0) if "CORRETA" in feedback or "CORRETO" in feedback else (0, 0, 255)
+                    cv2.putText(frame, feedback, (10, status_y + 30 + i*25), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                
+                # Indicador geral
+                if is_correct_form and elbow_angle < 160:
+                    cv2.putText(frame, 'FORMA CORRETA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                elif elbow_angle < 160:
+                    cv2.putText(frame, 'CORRIJA A FORMA!', (10, status_y + 30 + len(form_feedback)*25 + 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+            except Exception as e:
+                print(f"Erro ao processar os marcos: {e}")
+            
 
 
     # Display the resulting frame
     cv2.imshow('MediaPipe Pose Estimation', frame)
 
     # Break the loop when 'q' is pressed
-    if cv2.waitKey(5) & 0xFF == ord('q'):
-        break
+    k = cv2.waitKey(5)
+    if k != -1:
+        if k == ord('q'):
+            break
+        elif k == ord('e'):
+            exercise_name = ""
+        elif int(chr(k)) in range(1, len(lista_exercicios) + 1) and exercise_name == "":
+            print(f"Exercício selecionado: {lista_exercicios[int(chr(k)) - 1]}")
+            exercise_name = lista_exercicios[int(chr(k)) - 1]
 
 # Release the webcam and close all windows
 cap.release()
